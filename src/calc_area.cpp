@@ -3,6 +3,7 @@
 // PCL specific includes
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <std_msgs/Float32.h>
 #include <tf/tf.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
@@ -12,9 +13,12 @@
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/filters/extract_indices.h>
+#include <Eigen/Dense>
+#include <Eigen/Core>
+#include <Eigen/Geometry>
 //#include "handmade_ndt_scan_matcher/ndt_scan_matcher.hpp"
 
-ros::Publisher cloud_pub1,cloud_pub2,pose_pub;
+ros::Publisher cloud_pub1,cloud_pub2,pose_pub,area_pub;
 
 void
 CloudCallback (const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
@@ -63,7 +67,7 @@ CloudCallback (const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   two_msg.header.frame_id = "laser";
   cloud_pub2.publish (two_msg);
   
-  double yaw = tan(b/a);
+  double yaw = tan(b/a)+3.14;
   geometry_msgs::PoseStamped pose_stamped_msg;
   pose_stamped_msg.header.stamp = cloud_msg->header.stamp;
   pose_stamped_msg.header.frame_id = "laser";
@@ -86,16 +90,38 @@ CloudCallback (const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   pcl::toROSMsg(*outlier_cloud, outlier_msg);
   outlier_msg.header.frame_id = "laser";
   cloud_pub1.publish (outlier_msg);
-  // std::vector<int> d(outlier_cloud->points.size(), 0);
-  // std::vector<int> l(outlier_cloud->points.size(), 0);
-  // for(size_t i=0;i<outlier_cloud->points.size();i++){
-  //   d[i] = abs(alpha*outlier_cloud->points[i].y - outlier_cloud->points[i].x + beta) / sqrt(alpha*alpha + 1.0f);
-  //   l[i] = sqrt(outlier_cloud->points[i].y*outlier_cloud->points[i].y+pow(outlier_cloud->points[i].x - beta,2) - d[i]*d[i]);
-  // }
-  // std::vector<int> s(outlier_cloud->points.size()-1, 0);
-  // for(size_t i=0;i<outlier_cloud->points.size()-1;i++){
-  //   s[i] = ((d[i] + d[i+1]) / 2.0f) * (l[i+1] - l[i]);
-  // }
+  float area_size = 0.0f;
+  if(outlier_cloud->points.size()>0){
+    Eigen::Vector3f e,o,p,r;
+    e = Eigen::Vector3f::Zero();
+    e.x() = -a;
+    e.y() = -b;
+    o = Eigen::Vector3f::Zero();
+    o.x() = 0;
+    o.y() = b;
+    p = Eigen::Vector3f::Zero();
+    r = Eigen::Vector3f::Zero();
+    std::vector<Eigen::Vector3f> d(outlier_cloud->points.size(), Eigen::Vector3f::Zero());
+    std::vector<Eigen::Vector3f> l(outlier_cloud->points.size(), Eigen::Vector3f::Zero());
+    for(size_t i=0;i<outlier_cloud->points.size();i++){
+      p.x() = outlier_cloud->points[i].y;
+      p.y() = outlier_cloud->points[i].x;
+      r = p - o;
+      d[i] = (e / e.norm()) * (abs(a*p.x() + b*p.y() + c) / sqrt(a*a + b*b));
+      l[i] = r - d[i];
+    }
+    std::vector<float> s(outlier_cloud->points.size()-1, 0);
+    Eigen::Vector3f l_dist;
+    l_dist = Eigen::Vector3f::Zero();
+    for(size_t i=0;i<outlier_cloud->points.size()-1;i++){
+      l_dist = l[i+1] - l[i];
+      s[i] = ((d[i].norm() + d[i+1].norm()) / 2.0f) * l_dist.norm();
+      area_size += s[i];
+    }
+  }
+  std_msgs::Float32 area_size_msg;
+  area_size_msg.data = area_size;
+  area_pub.publish(area_size_msg);
 
   
 }
@@ -117,7 +143,7 @@ main (int argc, char** argv)
   cloud_pub1 = nh.advertise<sensor_msgs::PointCloud2> ("line_cloud", 1);
   cloud_pub2 = nh.advertise<sensor_msgs::PointCloud2> ("two_cloud", 1);
   pose_pub = nh.advertise<geometry_msgs::PoseStamped> ("e", 1);
-
+  area_pub = nh.advertise<std_msgs::Float32>("area_size", 1);
   // Spin
   ros::spin ();
 }
