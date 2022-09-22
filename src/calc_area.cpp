@@ -17,100 +17,35 @@ ros::Publisher pub;
 void
 CloudCallback (const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 {
-  // Container for original & filtered data
-  pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
-  pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
-  pcl::PCLPointCloud2 cloud_filtered;
-
-  // Convert to PCL data type
-  pcl_conversions::toPCL(*cloud_msg, *cloud);
-
-  // Perform the actual filtering
-
-
-  
-  pcl::PointCloud<pcl::PointXYZ> cloud1;
-  pcl::fromROSMsg (*cloud_msg, cloud1);
-  //std::cout <<cloud1[cloud1.size()/2].x<< std::endl;
-    //std::cout <<area<< std::endl;
- pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients );
- pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+  pcl::PointCloud<pcl::PointXYZ> cloud;
+  pcl::fromROSMsg (*cloud_msg, cloud);
+  pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients );
+  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
   // Create the segmentation object
   pcl::SACSegmentation<pcl::PointXYZ> seg;
- 
-  // Optional
   seg.setOptimizeCoefficients (true);
-  // Mandatory std::cout <<cloud1[i].x<< std::endl;
   seg.setModelType (pcl::SACMODEL_LINE);
   seg.setMethodType (pcl::SAC_RANSAC);
   seg.setDistanceThreshold (0.05);
 
-  seg.setInputCloud (cloud1.makeShared ());
+  seg.setInputCloud (cloud.makeShared ());
   seg.segment (*inliers, *coefficients);
-  sensor_msgs::PointCloud2 output;
-  pcl_conversions::fromPCL(cloud_filtered, output);
-   /*
-   std::cout <<coefficients->values[0]<<"|"<<coefficients->values[1]
-   <<"|"<<coefficients->values[2]
-   <<"|"<<coefficients->values[3]
-   <<"|"<<coefficients->values[4]
-   <<"|"<<coefficients->values[5]
-   << std::endl;
-   */
-   std::cout <<"--------------------------------------"<< std::endl;
+
   // x = alpha * y + beta
   double alpha = coefficients->values[3] / coefficients->values[4];
-  double beta = coefficients->values[0] - alpha * coefficients->values[1];
-  std::cout<< alpha << "||||" << beta<<std::endl;
-    
-  // double ground = 0.4;
-  // double area = 0;
-  // pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2 {new pcl::PointCloud<pcl::PointXYZ>};
-  // pcl::PointCloud<pcl::PointXYZ>::Ptr two_cloud {new pcl::PointCloud<pcl::PointXYZ>};
-  // // Convert to PCL data type
-  // pcl::fromROSMsg(*cloud_msg, *cloud2);
-  // two_cloud->points.resize(4);
-  // int j = 0;
-  // bool first =true;
-  // ///std::cout<< cloud2->points[1]<<std::endl;
-  // for(int i = 0 ; i < cloud2->points.size()-1 ; i++)
-  // {
+  double beta = coefficients->values[0] - alpha * coefficients->values[1];////////////////////////////////////////////////////////
 
-  //   if(cloud2->points[i].x>0.1 && cloud2->points[i].y>-0.3 && cloud2->points[i].y<0.3){
-
-
-  //     if(first){
-  //       two_cloud->points[0] = cloud2->points[i];
-  //       first = false; 
-  //     }
-  //     two_cloud->points[1] = cloud2->points[i];
-  //   }
-    
-  // }
-  
-  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_p (new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr outlier_cloud (new pcl::PointCloud<pcl::PointXYZ>);
   pcl::ExtractIndices<pcl::PointXYZ> extract;
-  extract.setInputCloud (cloud1.makeShared ());
+  extract.setInputCloud (cloud.makeShared ());
   extract.setIndices (inliers);
   extract.setNegative (true);
-  extract.filter (*cloud_p);////////////////////////////////////////////////////////////////////////////////////////////////////////
-  //
-  /*
-  two_cloud->points[2].x = coefficients->values[0] + coefficients->values[3] * 0.5;
-  two_cloud->points[2].y =  -0.5;
-  two_cloud->points[3].x = coefficients->values[0] + coefficients->values[3] * -0.5;
-  two_cloud->points[3].y =  0.5;
-  std::cout<< two_cloud->points[0]<<std::endl;
-  std::cout<< two_cloud->points[1]<<std::endl;
-  */
-  sensor_msgs::PointCloud2 output1;
-  //pcl_conversions::fromPCL(*two_cloud, output1);
-  pcl::toROSMsg(*cloud_p, output1);
-  output1.header.frame_id = "laser";
-
+  extract.filter (*outlier_cloud);////////////////////////////////////////////////////////////////////////////////////////////////////////
+  sensor_msgs::PointCloud2 outlier_msg;
+  pcl::toROSMsg(*outlier_cloud, outlier_msg);
+  outlier_msg.header.frame_id = "laser";
   // Publish the data
-  pub.publish (output1);
-  
+  pub.publish (outlier_msg);
   
 }
 
