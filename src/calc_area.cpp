@@ -126,23 +126,28 @@ PoseCallback (const geometry_msgs::PoseStampedConstPtr& pose_msg)
     distance_x = pose_msg->pose.position.x - last_pose.pose.position.x;
     distance_y = pose_msg->pose.position.y - last_pose.pose.position.y;
     gnss_distance = std::hypot(distance_x,distance_y);
-    lidar_distance = gnss_distance / (area_array.size()-1);
-    std::vector<float> lidar_volume(area_array.size()-1,0);
-    for(size_t i=0;i<area_array.size()-1;i++){
-        lidar_volume[i] = ((area_array[i] + area_array[i+1]) / 2)*lidar_distance;
-        gnss_volume += lidar_volume[i];
-        total_volume += lidar_volume[i];
+    if(gnss_distance < 0.6){
+      lidar_distance = gnss_distance / (area_array.size()-1);
+      std::vector<float> lidar_volume(area_array.size()-1,0);
+      for(size_t i=0;i<area_array.size()-1;i++){
+          lidar_volume[i] = ((area_array[i] + area_array[i+1]) / 2)*lidar_distance;
+          gnss_volume += lidar_volume[i];
+          total_volume += lidar_volume[i];
+      }
+      std_msgs::Float32 total_volume_msg;
+      total_volume_msg.data = total_volume;
+      volume_pub.publish(total_volume_msg);
+      float last_lidar_area;
+      last_lidar_area = area_array[area_array.size()-1];
+      area_array.clear();
+      area_array.push_back(last_lidar_area);
+      last_pose = *pose_msg;
     }
-    std_msgs::Float32 total_volume_msg;
-    total_volume_msg.data = total_volume;
-    volume_pub.publish(total_volume_msg);
-    float last_lidar_area;
-    last_lidar_area = area_array[area_array.size()-1];
-    area_array.clear();
-    area_array.push_back(last_lidar_area);
   }
-  last_pose = *pose_msg;
-  first_gnss = false;
+  else{
+    last_pose = *pose_msg;
+    first_gnss = false;
+  }
 }
 
 int
