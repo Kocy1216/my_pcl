@@ -18,13 +18,14 @@
 #include <Eigen/Geometry>
 //#include "handmade_ndt_scan_matcher/ndt_scan_matcher.hpp"
 
-ros::Publisher cloud_pub1,cloud_pub2,pose_pub,pose_pub2,area_pub,volume_pub;
+ros::Publisher cloud_pub1,cloud_pub2,cloud_pub3,cloud_pub4,pose_pub,pose_pub2,area_pub,volume_pub;
 
 std::vector<float> area_array;
 geometry_msgs::PoseStamped last_pose;
 bool first_gnss = true;
 float total_volume = 0;
-
+pcl::PointCloud<pcl::PointXYZI>::Ptr volume_cloud (new pcl::PointCloud<pcl::PointXYZI>);
+pcl::PointCloud<pcl::PointXYZI>::Ptr area_cloud (new pcl::PointCloud<pcl::PointXYZI>);
 void
 CloudCallback (const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 {
@@ -132,6 +133,15 @@ PoseCallback (const geometry_msgs::PoseStampedConstPtr& pose_msg)
         lidar_volume[i] = ((area_array[i] + area_array[i+1]) / 2)*lidar_distance;
         gnss_volume += lidar_volume[i];
         total_volume += lidar_volume[i];
+        //座標計算
+        float lidar_point_length;
+        lidar_point_length = i * lidar_distance + lidar_distance / 2;
+        pcl::PointXYZI pt;
+        pt.x = last_pose.pose.position.x + (distance_x / gnss_distance * lidar_point_length);
+        pt.y = last_pose.pose.position.y + (distance_y / gnss_distance * lidar_point_length);
+        pt.z = 0;
+        pt.intensity = area_array[i+1];
+        area_cloud->push_back(pt);
     }
     std_msgs::Float32 total_volume_msg;
     total_volume_msg.data = total_volume;
@@ -140,6 +150,21 @@ PoseCallback (const geometry_msgs::PoseStampedConstPtr& pose_msg)
     last_lidar_area = area_array[area_array.size()-1];
     area_array.clear();
     area_array.push_back(last_lidar_area);
+    pcl::PointXYZI pt;
+    pt.x = pose_msg->pose.position.x;
+    pt.y = pose_msg->pose.position.y;
+    pt.z = 0;
+    pt.intensity = gnss_volume;
+    volume_cloud->push_back(pt);
+    sensor_msgs::PointCloud2 volume_cloud_msg;
+    pcl::toROSMsg(*volume_cloud, volume_cloud_msg);
+    volume_cloud_msg.header.frame_id = "map";
+    cloud_pub3.publish (volume_cloud_msg);
+
+    sensor_msgs::PointCloud2 area_cloud_msg;
+    pcl::toROSMsg(*area_cloud, area_cloud_msg);
+    area_cloud_msg.header.frame_id = "map";
+    cloud_pub4.publish (area_cloud_msg);
   }
   last_pose = *pose_msg;
   first_gnss = false;
@@ -162,6 +187,8 @@ main (int argc, char** argv)
   // Create a ROS publisher for the output point cloud
   cloud_pub1 = nh.advertise<sensor_msgs::PointCloud2> ("line_cloud", 1);
   cloud_pub2 = nh.advertise<sensor_msgs::PointCloud2> ("two_cloud", 1);
+  cloud_pub3 = nh.advertise<sensor_msgs::PointCloud2> ("volume_cloud", 1);
+  cloud_pub4 = nh.advertise<sensor_msgs::PointCloud2> ("area_cloud", 1);
   pose_pub = nh.advertise<geometry_msgs::PoseStamped> ("e", 1);
   pose_pub2 = nh.advertise<geometry_msgs::PoseStamped> ("o", 1);
   area_pub = nh.advertise<std_msgs::Float32>("area_size", 1);
